@@ -1,19 +1,25 @@
 import * as cdk from 'aws-cdk-lib/core';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { Construct } from 'constructs';
+import { EnvironmentConfig } from './config';
+
+interface NetworkStackProps extends cdk.StackProps {
+  config: EnvironmentConfig;
+}
 
 export class NetworkStack extends cdk.Stack {
-  // 他のスタックから参照できるようにpublicプロパティとして公開
   public readonly vpc: ec2.Vpc;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: NetworkStackProps) {
     super(scope, id, props);
 
-    // VPC（パブリック/プライベートサブネット、2AZ、NAT Gateway 1つ）
+    const { config } = props;
+
     this.vpc = new ec2.Vpc(this, 'Vpc', {
-      ipAddresses: ec2.IpAddresses.cidr('10.0.0.0/16'),
+      vpcName: `${config.envName}-Vpc`,
+      ipAddresses: ec2.IpAddresses.cidr(config.vpcCidr),
       maxAzs: 2,
-      natGateways: 1,
+      natGateways: config.natGateways,
       subnetConfiguration: [
         {
           cidrMask: 24,
