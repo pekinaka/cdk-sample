@@ -1,0 +1,51 @@
+name: ECS Blue/Green Deploy Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      cluster-name:
+        description: 'ECS Cluster名'
+        required: true
+      service-name:
+        description: 'ECS Service名'
+        required: true
+      task-definition-arn:
+        description: 'デプロイするタスク定義のARN (例: arn:aws:ecs:ap-northeast-1:590183940496:task-definition/my-task:2)'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::590183940496:role/test-github-actions-cdk-deploy
+          aws-region: ap-northeast-1
+
+      - name: Update ECS Service with new task definition
+        run: |
+          aws ecs update-service \
+            --cluster ${{ github.event.inputs.cluster-name }} \
+            --service ${{ github.event.inputs.service-name }} \
+            --task-definition ${{ github.event.inputs.task-definition-arn }}
+
+      - name: Wait for deployment to complete
+        run: |
+          echo "Waiting for service to stabilize..."
+          aws ecs wait services-stable \
+            --cluster ${{ github.event.inputs.cluster-name }} \
+            --services ${{ github.event.inputs.service-name }}
+          echo "Deployment completed successfully."
+
+      - name: Show deployment status
+        run: |
+          aws ecs describe-services \
+            --cluster ${{ github.event.inputs.cluster-name }} \
+            --services ${{ github.event.inputs.service-name }} \
+            --query 'services[0].deployments' \
+            --output table
