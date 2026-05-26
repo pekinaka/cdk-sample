@@ -1,0 +1,37 @@
+name: CDK Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write   # OIDC トークン取得に必要
+  contents: read    # リポジトリのチェックアウトに必要
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::590183940496:role/test-github-actions-cdk-deploy
+          aws-region: ap-northeast-1
+
+      - name: CDK Synth
+        run: npx cdk synth
+
+      - name: CDK Deploy
+        run: npx cdk deploy --require-approval never
