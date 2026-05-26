@@ -1,0 +1,21 @@
+name: AWS OIDC Connection Test
+
+on:
+  workflow_dispatch: # 手動実行用
+
+permissions:
+  id-token: write # OIDC トークン取得に必要
+  contents: read
+
+jobs:
+  test-connection:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::590183940496:role/test-github-actions-cdk-deploy
+          aws-region: ap-northeast-1
+
+      - name: Verify Identity
+        run: aws sts get-caller-identity
