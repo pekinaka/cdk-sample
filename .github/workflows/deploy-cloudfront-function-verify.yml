@@ -31,7 +31,7 @@ permissions:
 
 env:
   # 実コードのパス（リポジトリ内）
-  FUNCTION_CODE_PATH: lib/service-site/verification/github-actions-function-code/redirect.js
+  FUNCTION_CODE_PATH: lib/redirect.js
   # CloudFront はグローバルサービスだが、API エンドポイントは us-east-1 を使う
   AWS_REGION: us-east-1
 
