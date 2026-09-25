@@ -1,0 +1,93 @@
+# =============================================================================
+# CloudFront Function 実コードデプロイ（検証用）
+#
+# 目的:
+#   顧客側運用を模した GitHub Actions で、CDK が作成済みの CloudFront Function
+#   （プレースホルダー）に「実コード」をデプロイ（update-function + publish-function）する。
+#   その後 CDK を再デプロイしても実コードが保持される（ダミーに戻らない）ことを検証する。
+#
+# 前提:
+#   - CDK 検証スタック（MamCloudFrontFunctionVerificationStack）が先にデプロイ済みで、
+#     対象 Function（既定: mam-dev-svc-cf-fn-redirect-verify）が存在すること。
+#   - リポジトリに OIDC 連携用の IAM ロール ARN がシークレット/変数として設定済みであること。
+#
+# 実行方法:
+#   Actions タブから本ワークフローを手動実行（workflow_dispatch）する。
+# =============================================================================
+name: Deploy CloudFront Function (verify)
+
+on:
+  workflow_dispatch:
+    inputs:
+      function_name:
+        description: 'CloudFront Function 名（CDK が作成したもの）'
+        required: true
+        default: 'mam-dev-svc-cf-fn-redirect-verify'
+
+# OIDC で AWS の IAM ロールを引き受けるために必要
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  # 実コードのパス（リポジトリ内）
+  FUNCTION_CODE_PATH: lib/service-site/verification/github-actions-function-code/redirect.js
+  # CloudFront はグローバルサービスだが、API エンドポイントは us-east-1 を使う
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy-function:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # 事前に作成した OIDC 連携用 IAM ロールの ARN を
+          # リポジトリ変数 AWS_DEPLOY_ROLE_ARN に設定しておく
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update and publish CloudFront Function
+        env:
+          FUNCTION_NAME: ${{ github.event.inputs.function_name }}
+        run: |
+          set -euo pipefail
+
+          echo "対象 Function: ${FUNCTION_NAME}"
+
+          # 1. 現在の ETag を取得（update-function に必須）
+          ETAG=$(aws cloudfront describe-function \
+            --name "${FUNCTION_NAME}" \
+            --query 'ETag' --output text)
+          echo "現在の ETag: ${ETAG}"
+
+          # 2. 実コードで update-function（DEVELOPMENT ステージへ反映）
+          UPDATE_ETAG=$(aws cloudfront update-function \
+            --name "${FUNCTION_NAME}" \
+            --if-match "${ETAG}" \
+            --function-config '{"Comment":"Real code deployed by GitHub Actions","Runtime":"cloudfront-js-2.0"}' \
+            --function-code "fileb://${FUNCTION_CODE_PATH}" \
+            --query 'ETag' --output text)
+          echo "update 後の ETag: ${UPDATE_ETAG}"
+
+          # 3. publish-function で LIVE ステージへ公開
+          aws cloudfront publish-function \
+            --name "${FUNCTION_NAME}" \
+            --if-match "${UPDATE_ETAG}"
+
+          echo "CloudFront Function に実コードを公開しました。"
+
+      - name: Show deployed code (LIVE stage)
+        env:
+          FUNCTION_NAME: ${{ github.event.inputs.function_name }}
+        run: |
+          set -euo pipefail
+          aws cloudfront get-function \
+            --name "${FUNCTION_NAME}" \
+            --stage LIVE \
+            deployed-code.js
+          echo "----- デプロイされたコード（LIVE） -----"
+          cat deployed-code.js
